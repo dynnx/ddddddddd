@@ -1,0 +1,94 @@
+private async HandleServerUrl(serverUrl: string): Promise<VideoSource[]> {
+    try {
+        const req = await fetch(`${this.SEANIME_API}${encodeURIComponent(serverUrl)}`);
+        if (!req.ok) {
+            console.log("Failed initial fetch:", serverUrl);
+            return [];
+        }
+
+        let html = await req.text();
+
+        // 🔥 STEP 1 — Follow iframe if present
+        const iframeMatch = html.match(/<iframe[^>]+src="([^"]+)"/i);
+        if (iframeMatch) {
+            let iframeUrl = iframeMatch[1];
+
+            if (!iframeUrl.startsWith("http")) {
+                const base = serverUrl.split("/").slice(0, 3).join("/");
+                iframeUrl = base + iframeUrl;
+            }
+
+            console.log("Found iframe →", iframeUrl);
+
+            const iframeReq = await fetch(`${this.SEANIME_API}${encodeURIComponent(iframeUrl)}`);
+            if (iframeReq.ok) {
+                const iframeHtml = await iframeReq.text();
+                html += iframeHtml; // merge content
+            }
+        }
+
+        // 🔥 STEP 2 — Unpack obfuscated JS (if exists)
+        function unpack(p: string, a: number, c: number, k: string[]): string {
+            while (c--) {
+                if (k[c]) {
+                    p = p.replace(new RegExp('\\b' + c.toString(a) + '\\b', 'g'), k[c]);
+                }
+            }
+            return p;
+        }
+
+        let unpacked = "";
+        const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+        let match;
+
+        while ((match = scriptRegex.exec(html)) !== null) {
+            const script = match[1];
+            if (script.includes("eval(function(p,a,c,k,e,d)")) {
+                const fullRegex = /eval\(function\([^)]*\)\{[\s\S]*?\}\(\s*'([\s\S]*?)'\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*'([\s\S]*?)'\.split\('\|'\)/;
+                const unpackMatch = script.match(fullRegex);
+
+                if (unpackMatch) {
+                    const packed = unpackMatch[1];
+                    const base = parseInt(unpackMatch[2], 10);
+                    const count = parseInt(unpackMatch[3], 10);
+                    const dict = unpackMatch[4].split('|');
+
+                    unpacked = unpack(packed, base, count, dict);
+                    break;
+                }
+            }
+        }
+
+        const combined = html + unpacked;
+
+        // 🔥 STEP 3 — Extract m3u8 (PRIORITY)
+        const m3u8Regex = /https?:\/\/[^\s'"]+\.m3u8[^\s'"]*/g;
+        const mp4Regex = /https?:\/\/[^\s'"]+\.mp4[^\s'"]*/g;
+
+        let videoUrls: string[] = [];
+
+        const m3u8Matches = combined.match(m3u8Regex);
+        if (m3u8Matches && m3u8Matches.length > 0) {
+            videoUrls = m3u8Matches;
+        } else {
+            const mp4Matches = combined.match(mp4Regex);
+            if (mp4Matches) videoUrls = mp4Matches;
+        }
+
+        // 🔥 STEP 4 — Remove duplicates
+        videoUrls = [...new Set(videoUrls)];
+
+        console.log("FINAL VIDEO URLS:", videoUrls);
+
+        return videoUrls.map(url => ({
+            url: url,
+            type: url.includes(".m3u8") ? "m3u8" : "mp4",
+            quality: `${this._Server} - auto`,
+            subtitles: []
+        }));
+
+    } catch (err) {
+        console.error("HandleServerUrl error:", err);
+        return [];
+    }
+}
