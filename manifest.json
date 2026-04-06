@@ -1,9 +1,10 @@
 {
-  "id": "test",
-  "name": "Test",
+  "id": "anime-sama-fixed",
+  "name": "Anime Sama Fixed",
   "version": "1.0.0",
-  "type": "onlinestream-provider",
+  "manifestURI": "https://raw.githubusercontent.com/dynnx/ddddddddd/refs/heads/main/manifest.json",
   "language": "typescript",
-  "author": "you",
-  "payload": "class Provider { getSettings(){return{episodeServers:[],supportsDub:true};}}"
+  "type": "onlinestream-provider",
+  "author": "dynnx",
+  "payload": "YOUR FULL PROVIDER CODE HERE"
 }
